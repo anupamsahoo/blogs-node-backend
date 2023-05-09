@@ -1,6 +1,6 @@
 # Node Backend For Blog API with MongoDB
 
-Thia is a Node Application for dealing with MongoDB CRUD Operation.
+This is a Node Application for dealing with MongoDB CRUD Operation.
 
 ## Technologies
 

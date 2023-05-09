@@ -8,7 +8,7 @@ const blogSchema = new mongoose.Schema({
   },
   content: {
     type: String,
-    minLength: 80,
+    minLength: 10,
     required: true,
   },
   author: {
