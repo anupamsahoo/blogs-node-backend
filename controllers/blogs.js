@@ -1,70 +1,100 @@
 const blogsRouter = require("express").Router();
 const Blog = require("../models/blog");
+const User = require("../models/user");
+const middleware = require("../utils/middleware");
 
-blogsRouter.get("/", (request, response) => {
-  Blog.find({}).then((blogs) => {
-    response.json(blogs);
+const userExtractor = middleware.userExtractor;
+
+/* const getTokenFrom = (request) => {
+  const authorization = request.get("authorization");
+  if (authorization && authorization.startsWith("Bearer ")) {
+    return authorization.replace("Bearer ", "");
+  }
+  return null;
+}; */
+
+blogsRouter.get("/", async (request, response) => {
+  const blogs = await Blog.find({}).populate("user", { name: 1, username: 1 });
+  response.json(blogs);
+});
+
+blogsRouter.get("/:id", async (request, response) => {
+  const blog = await Blog.findById(request.params.id).populate("user", {
+    username: 1,
+    id: 1,
+    name: 1,
   });
+  if (blog) {
+    response.json(blog);
+  } else {
+    response.status(404).end();
+  }
 });
 
-blogsRouter.get("/:id", (request, response, next) => {
-  Blog.findById(request.params.id)
-    .then((blog) => {
-      if (blog) {
-        response.json(blog);
-      } else {
-        response.status(404).end();
-      }
-    })
-    .catch((error) => next(error));
-});
-
-blogsRouter.post("/", (request, response, next) => {
+blogsRouter.post("/", userExtractor, async (request, response) => {
   const body = request.body;
 
+  if (!body.title) {
+    response.status(400);
+  }
+  if (!body.blog_url) {
+    response.status(400);
+  }
+
+  const request_user = request.user;
+  const user = await User.findById(request_user);
   const blog = new Blog({
     title: body.title,
     content: body.content,
     author: body.author,
-    url: body.url,
-    likes: Math.floor(Math.random() * 100),
-    created_at: new Date().toJSON(),
-    updated_at: new Date().toJSON(),
+    blog_url: body.blog_url,
+    likes: body.likes ? body.likes : 0,
+    user: user.id,
   });
+  const savedBlog = await blog.save();
+  user.blogs = user.blogs.concat(savedBlog._id);
+  await user.save();
 
-  blog
-    .save()
-    .then((savedBlog) => {
-      response.json(savedBlog);
-    })
-    .catch((error) => next(error));
+  if (savedBlog) {
+    response.status(201).json(savedBlog);
+  } else {
+    response.status(404).json({ error: "Something went wrong" });
+  }
 });
 
-blogsRouter.delete("/:id", (request, response, next) => {
-  Blog.findByIdAndRemove(request.params.id)
-    .then(() => {
-      response.status(204).end();
-    })
-    .catch((error) => next(error));
+blogsRouter.delete("/:id", userExtractor, async (request, response) => {
+  const id = request.params.id;
+  const request_user = request.user;
+
+  const user = await User.findById(request_user);
+  const blog = await Blog.findById(id);
+  if (blog.user.toString() !== user.id.toString()) {
+    return response.status(401).json({ error: "Unauthorized access" });
+  }
+  const result = await Blog.findByIdAndRemove(id);
+  if (result.deletedCount === 1) {
+    response.status(204).end();
+  } else {
+    response.status(404).json({ error: `Blog post with ID ${id} not found.` });
+  }
 });
 
-blogsRouter.put("/:id", (request, response, next) => {
-  const { title, content, url } = request.body;
-
-  Blog.findByIdAndUpdate(
-    request.params.id,
-    {
-      title: title,
-      content: content,
-      url: url,
-      updated_at: new Date().toJSON(),
-    },
-    { new: true, runValidators: true, context: "query" }
-  )
-    .then((updatedBlog) => {
-      response.json(updatedBlog);
-    })
-    .catch((error) => next(error));
+blogsRouter.put("/:id", async (request, response) => {
+  const { title, content, blog_url } = request.body;
+  try {
+    const updatedBlog = await Blog.findByIdAndUpdate(
+      request.params.id,
+      {
+        title: title,
+        content: content,
+        blog_url: blog_url,
+      },
+      { new: true, runValidators: true, context: "query" }
+    );
+    response.status(200).json(updatedBlog);
+  } catch (error) {
+    response.status(500).json({ error: "Server error." });
+  }
 });
 
 module.exports = blogsRouter;
