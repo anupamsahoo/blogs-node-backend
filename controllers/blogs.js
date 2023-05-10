@@ -72,22 +72,46 @@ blogsRouter.delete("/:id", userExtractor, async (request, response) => {
     return response.status(401).json({ error: "Unauthorized access" });
   }
   const result = await Blog.findByIdAndRemove(id);
-  if (result.deletedCount === 1) {
+  if (result) {
     response.status(204).end();
   } else {
     response.status(404).json({ error: `Blog post with ID ${id} not found.` });
   }
 });
 
-blogsRouter.put("/:id", async (request, response) => {
-  const { title, content, blog_url } = request.body;
+blogsRouter.put("/:id", userExtractor, async (request, response) => {
+  const body = request.body;
+  try {
+    const id = request.params.id;
+    const request_user = request.user;
+
+    const user = await User.findById(request_user);
+
+    const blogToUpdate = {
+      title: body.title,
+      content: body.content,
+      author: body.author,
+      blog_url: body.blog_url,
+      likes: body.likes ? body.likes : 0,
+      user: user.id,
+    };
+
+    const updatedBlog = await Blog.findByIdAndUpdate(id, blogToUpdate, {
+      new: true,
+    });
+    response.status(200).json(updatedBlog);
+  } catch (error) {
+    response.status(500).json({ error: "Server error." });
+  }
+});
+
+blogsRouter.patch("/:id", userExtractor, async (request, response) => {
+  const { likes } = request.body;
   try {
     const updatedBlog = await Blog.findByIdAndUpdate(
       request.params.id,
       {
-        title: title,
-        content: content,
-        blog_url: blog_url,
+        likes: likes,
       },
       { new: true, runValidators: true, context: "query" }
     );
